@@ -1,0 +1,49 @@
+name: Post to NOSTR
+
+on:
+  workflow_dispatch:
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read phrases and index
+        id: read
+        run: |
+          mapfile -t phrases < <(grep -v '^$' phrases.txt)
+          total=${#phrases[@]}
+          index=$(cat current_index.txt)
+          
+          phrase="${phrases[$index]}"
+          
+          echo "phrase=$phrase" >> $GITHUB_ENV
+          echo "total=$total" >> $GITHUB_ENV
+          echo "index=$index" >> $GITHUB_ENV
+          echo "Frase a publicar: $phrase"
+
+      - name: Post to NOSTR
+        uses: theborakompanioni/nostr-action@v1
+        with:
+          key: ${{ secrets.NOSTR_PRIVATE_KEY }}
+          relay: "wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net,wss://nostr.wine"
+          content: ${{ env.phrase }}
+
+      - name: Update index
+        run: |
+          new_index=$(( (index + 1) % total ))
+          echo $new_index > current_index.txt
+          echo "Siguiente índice: $new_index"
+
+      - name: Commit and push new index
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add current_index.txt
+          git commit -m "Update to next phrase" || echo "No changes to commit"
+          git push
